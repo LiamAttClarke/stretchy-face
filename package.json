@@ -1,0 +1,16 @@
+{
+  "name": "geometry-stretcher",
+  "version": "1.0.0",
+  "author": "Liam Atticus Clarke",
+  "license": "ISC",
+  "scripts": {
+    "dev": "lite-server"
+  },
+  "dependencies": {
+    "three": "^0.74.0"
+  },
+  "devDependencies": {
+    "browserify": "^12.0.1",
+    "lite-server": "^2.1.0"
+  }
+}
