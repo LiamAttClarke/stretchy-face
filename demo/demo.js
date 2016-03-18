@@ -1,4 +1,5 @@
 var THREE = require('three');
+var gui = require('dat-gui');
 var help = require('./helper');
 var geometryStretcher = require('./geometry-stretcher.js');
 var headShader = require('../shaders/head_shader');
@@ -6,31 +7,25 @@ var headModel = require('../assets/models/head.json');
 // dom elements
 var renderTarget = document.getElementById('render-target');
 // global state
-var renderTargetRect, pointerStartPosition, alignStartRotation, alignStartTime, 
-alignTimeout, tanFOV, raycastHitInfo, camera, stretchDistFactor, headTexture;
-var outlineScene = new THREE.Scene(),
-	headScene = new THREE.Scene(),
-	renderer = new THREE.WebGLRenderer( { antialias: true } ),
+var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, stretchDistFactor, headTexture;
+var scene = new THREE.Scene(),
+	renderer = new THREE.WebGLRenderer( { antialias: true, alpha: 1 } ),
 	headStartRotation = -Math.PI / 8, 
 	raycaster = new THREE.Raycaster(), 
 	lastPointerPos = new THREE.Vector2(),
 	headStates = {
 		rest: 0,
 		stretching: 1,
-		rotating: 2,
-		aligning: 3 },
+		rotating: 2
+    },
 	currentHeadState = 0,
 	isTouching = false;
 // scene objects
-var head, headOutline;
+var head;
 // scene variables
-var sceneColor = new THREE.Color(0x000000),
+var sceneColor = new THREE.Color(0xdddddd),
 	ambientColor = sceneColor,
-	outlineColor = new THREE.Color( 0xffffff ),
-	outlineWidth = 0.02,
 	framesPerSecond = 60,
-    alignDelay = 2000,
-	alignDuration = 2000,
 	rotateSpeed = 0.01;
 
 window.onload =  function () {
@@ -45,12 +40,12 @@ window.onload =  function () {
 }
 
 function start () {
+    console.log(gui);
 	renderTargetRect = renderTarget.getBoundingClientRect();
 	// init renderer
 	renderer.setSize(renderTarget.clientWidth, renderTarget.clientHeight);
 	renderTarget.appendChild( renderer.domElement );
-	renderer.setClearColor(sceneColor, 1);
-	renderer.autoClear = false;
+	renderer.setClearColor(sceneColor);
 	// init camera
     camera = new THREE.PerspectiveCamera(45, renderTarget.clientWidth / renderTarget.clientHeight, 0.1, 100)
 	camera.position.set(0, 0, 6);
@@ -82,19 +77,7 @@ function start () {
     head.name = 'Head';
     head.castShadow = true;
     head.rotation.y = headStartRotation;
-    headScene.add( head );
-    // Outline
-    headOutline = geometryStretcher.elasticMesh(
-        geometry,
-        new THREE.MeshBasicMaterial({
-            color: outlineColor
-        }),
-        headMeshProperties
-    );
-    var headOutlineScale = head.scale.x + outlineWidth;
-    headOutline.scale.set(headOutlineScale, headOutlineScale, headOutlineScale);
-    headOutline.rotation.y = headStartRotation;
-    outlineScene.add( headOutline );
+    scene.add( head );
     // init events
     window.addEventListener('resize', onResizeEvent, false);
     onResizeEvent();
@@ -116,20 +99,10 @@ function update() {
 	if(currentHeadState !== headStates.stretching) {
 		geometryStretcher.normalize( head );
 	}
-	if(currentHeadState === headStates.aligning) {
-		alignHead();
-	}
     // render
-	render();
+	renderer.render(scene, camera);
 	// loop
 	requestAnimationFrame(update);
-}
-
-function render() {
-    renderer.clear();
-	renderer.render(outlineScene, camera);
-	renderer.clearDepth();
-	renderer.render(headScene, camera);
 }
 
 function onPointerStart(event) {
@@ -138,7 +111,7 @@ function onPointerStart(event) {
 	lastPointerPos = new THREE.Vector2().copy( pointerPos );
     pointerStartPosition = new THREE.Vector2().copy( pointerPos );
 	raycaster.setFromCamera(normalizedPointerPosition(pointerPos), camera);
-	var hits = raycaster.intersectObjects(headScene.children, false);
+	var hits = raycaster.intersectObjects(scene.children, false);
 	for (var i = 0; i < hits.length; i++) {
 		if(hits[i].object.name === 'Head') {
 			raycastHitInfo = hits[i];
@@ -173,7 +146,6 @@ function onPointerMove(event) {
         }
 	} else if(currentHeadState === headStates.rotating) {
 		head.rotation.y -= pointerDelta.x * rotateSpeed;
-		headOutline.rotation.copy(head.rotation);
 		if (head.rotation.y < headStartRotation - Math.PI) {
 			head.rotation.y += Math.PI * 2;
 		} else if(head.rotation.y > headStartRotation + Math.PI) {
@@ -191,7 +163,6 @@ function onPointerEnd(event) {
 
 function releasePinch() {
     currentHeadState = headStates.rest;
-    triggerHeadAlign();    
 }
 
 function GetMousePosition(event) {
@@ -219,29 +190,6 @@ function onResizeEvent() {
 
 function onScrollEvent() {
 	renderTargetRect = renderTarget.getBoundingClientRect();
-}
-
-function triggerHeadAlign() {
-	if (alignTimeout) clearTimeout(alignTimeout);
-	alignTimeout = setTimeout(function() {
-		if (currentHeadState === headStates.rest) {
-			currentHeadState = headStates.aligning;
-			alignStartRotation = head.rotation.y;
-			alignStartTime = Date.now();
-		}
-	}, alignDelay);
-}
-
-function alignHead() {
-	if (head.rotation.y === headStartRotation) {
-		currentHeadState = headStates.rest;
-	} else {
-		var timeElapsed = Date.now() - alignStartTime;
-		var t = timeElapsed / alignDuration;
-		var alpha = help.smootherstep(0, 1, t);
-		head.rotation.y = help.lerp(alignStartRotation, headStartRotation, alpha);
-		headOutline.rotation.copy(head.rotation);
-	}
 }
 
 function normalizedPointerPosition(pointerPosition) {
