@@ -16,9 +16,312 @@ module.exports={
     "name": "meshGeometry"
 }
 },{}],2:[function(require,module,exports){
+var THREE = require('three');
+var gui = require('dat-gui');
+var geometryStretcher = require('../../modules/geometry-stretcher.js');
+var headShader = require('../shaders/head_shader');
+var headModel = require('../models/head.json');
+// dom elements
+var renderTarget = document.getElementById('render-target');
+// global state
+var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, stretchDistFactor, headTexture;
+var scene = new THREE.Scene(),
+	renderer = new THREE.WebGLRenderer( { antialias: true, alpha: 1 } ),
+	headStartRotation = -Math.PI / 8, 
+	raycaster = new THREE.Raycaster(), 
+	lastPointerPos = new THREE.Vector2(),
+	headStates = {
+		rest: 0,
+		stretching: 1,
+		rotating: 2
+    },
+	currentHeadState = 0,
+	isTouching = false;
+// scene objects
+var head;
+// scene variables
+var sceneColor = new THREE.Color(0xdddddd),
+	ambientColor = sceneColor,
+	framesPerSecond = 60,
+	rotateSpeed = 0.01;
+
+window.onload =  function () {
+    var textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+        './demo/textures/head.png',
+        function (texture) {
+            headTexture = texture;
+            start();
+        }
+    );
+}
+
+function start () {
+    console.log(gui);
+	renderTargetRect = renderTarget.getBoundingClientRect();
+	// init renderer
+	renderer.setSize(renderTarget.clientWidth, renderTarget.clientHeight);
+	renderTarget.appendChild( renderer.domElement );
+	renderer.setClearColor(sceneColor);
+	// init camera
+    camera = new THREE.PerspectiveCamera(45, renderTarget.clientWidth / renderTarget.clientHeight, 0.1, 100)
+	camera.position.set(0, 0, 6);
+	tanFOV = Math.tan( THREE.Math.degToRad( camera.fov / 2 ) );
+    var viewDirection = new THREE.Vector3(0, 0, -1.0).transformDirection(camera.matrixWorld);    
+	// HEAD
+    var geometry = new THREE.JSONLoader().parse(headModel).geometry;
+    var headMeshProperties = geometryStretcher.elasticMeshProperties(
+        0.5, // elasticity
+        0.25, // friction
+        2.0, // stretch range factor
+        0.003, // stretch factor
+        400.0 // max stretch distance
+    );
+    head = geometryStretcher.elasticMesh(
+        geometry,
+        new THREE.ShaderMaterial({
+            vertexShader: headShader.vertexShader,
+            fragmentShader: headShader.fragmentShader,
+            uniforms: {
+                texture: { type: "t", value: headTexture },
+                uViewDir: { type: 'v3', value: viewDirection },
+                uRimWidth: { type: 'f', value: 0.66 },
+                uRimIntensity: { type: 'f', value: 0.33 }
+            }
+        }),
+        headMeshProperties
+    );
+    head.name = 'Head';
+    head.castShadow = true;
+    head.rotation.y = headStartRotation;
+    scene.add( head );
+    // init events
+    window.addEventListener('resize', onResizeEvent, false);
+    onResizeEvent();
+    window.addEventListener('scroll', onScrollEvent, false);
+    // user input events
+    renderTarget.addEventListener('mousedown', onPointerStart, false);
+    renderTarget.addEventListener('touchstart', onPointerStart, false);
+    window.addEventListener('mousemove', onPointerMove, false);
+    window.addEventListener('touchmove', onPointerMove, false);
+    window.addEventListener('mouseup', onPointerEnd, false);
+    window.addEventListener('touchend', onPointerEnd, false);
+    renderTarget.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false);;
+    // begin render vindaloop
+    update();
+}
+
+function update() {
+	// normalize head
+	if(currentHeadState !== headStates.stretching) {
+		geometryStretcher.normalize( head );
+	}
+    // render
+	renderer.render(scene, camera);
+	// loop
+	requestAnimationFrame(update);
+}
+
+function onPointerStart(event) {
+    var isTouchInput = (event.touches) ? true : false;
+    var pointerPos = GetMousePosition(event);
+	lastPointerPos = new THREE.Vector2().copy( pointerPos );
+    pointerStartPosition = new THREE.Vector2().copy( pointerPos );
+	raycaster.setFromCamera(normalizedPointerPosition(pointerPos), camera);
+	var hits = raycaster.intersectObjects(scene.children, false);
+	for (var i = 0; i < hits.length; i++) {
+		if(hits[i].object.name === 'Head') {
+			raycastHitInfo = hits[i];
+			isTouching = true;
+			if (event.which === 1 || isTouchInput) {
+				currentHeadState = headStates.stretching;
+			} else if (event.which === 3) {
+				currentHeadState = headStates.rotating;
+			}
+			break;
+		}
+	}
+}
+
+function onPointerMove(event) {
+    if (!isTouching) return;
+    event.preventDefault();
+	var pointerPos = GetMousePosition(event);
+	var pointerDelta = new THREE.Vector2().copy( lastPointerPos ).sub( pointerPos );
+    pointerDelta.y *= -1;
+	lastPointerPos.copy( pointerPos );
+	if(currentHeadState === headStates.stretching) {
+        var distToPointer = new THREE.Vector2()
+            .copy( pointerPos )
+            .sub( pointerStartPosition )
+            .length();
+        if (distToPointer < head.userData.meshProperties.maxStretchDist) {
+            stretchDistFactor = 1.0 - distToPointer / head.userData.meshProperties.maxStretchDist;
+    		geometryStretcher.stretch(head, raycastHitInfo.point, pointerDelta, stretchDistFactor);                
+        } else {
+            releasePinch();
+        }
+	} else if(currentHeadState === headStates.rotating) {
+		head.rotation.y -= pointerDelta.x * rotateSpeed;
+		if (head.rotation.y < headStartRotation - Math.PI) {
+			head.rotation.y += Math.PI * 2;
+		} else if(head.rotation.y > headStartRotation + Math.PI) {
+			head.rotation.y -= Math.PI * 2;
+		}
+	}
+}
+
+function onPointerEnd(event) {
+	if (!isTouching) return;
+    event.preventDefault();
+    releasePinch();
+    isTouching = false;
+}
+
+function releasePinch() {
+    currentHeadState = headStates.rest;
+}
+
+function GetMousePosition(event) {
+	if (event.touches) {
+		return new THREE.Vector2(
+            event.touches[0].clientX,
+            event.touches[0].clientY
+        );		
+	} else {
+        return new THREE.Vector2(
+            event.clientX,
+            event.clientY
+        );
+	}
+}
+
+function onResizeEvent() {
+    var rtWidth = renderTarget.clientWidth;
+	var rtHeight = renderTarget.clientHeight;
+	renderTargetRect = renderTarget.getBoundingClientRect();
+	camera.aspect = rtWidth / rtHeight;
+	renderer.setSize( rtWidth, rtHeight );
+	camera.updateProjectionMatrix();
+}
+
+function onScrollEvent() {
+	renderTargetRect = renderTarget.getBoundingClientRect();
+}
+
+function normalizedPointerPosition(pointerPosition) {
+	var posX = (pointerPosition.x - renderTargetRect.left);
+	var posY = (pointerPosition.y - renderTargetRect.top);
+	return new THREE.Vector2(
+		(posX / renderTarget.clientWidth) * 2 - 1,
+		-((posY / renderTarget.clientHeight) * 2 - 1)
+	);
+}
+},{"../../modules/geometry-stretcher.js":4,"../models/head.json":1,"../shaders/head_shader":3,"dat-gui":5,"three":8}],3:[function(require,module,exports){
+exports.vertexShader = `
+	varying vec2 vUv;
+	varying vec3 vWorldSpaceNormal;
+	void main() {
+		vUv = uv;
+		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+		vWorldSpaceNormal = (modelMatrix * vec4(normal, 1.0)).xyz;
+	}
+`;
+
+exports.fragmentShader = `
+	uniform sampler2D texture;
+	uniform vec3 uViewDir;
+	uniform float uRimWidth;
+	uniform float uRimIntensity;
+	varying vec3 vWorldSpaceNormal;
+	varying vec2 vUv;
+	void main() {
+		vec3 worldSpaceNormal = normalize( vWorldSpaceNormal );
+		float rimLight = uRimIntensity * smoothstep(1.0 - uRimWidth, 1.0, 1.0 - max(dot(worldSpaceNormal, -uViewDir), 0.0));
+		gl_FragColor = texture2D(texture, vUv) + rimLight;
+	}
+`;
+},{}],4:[function(require,module,exports){
+var THREE = require('three');
+
+function updateGeometry ( object ) {
+	object.geometry.verticesNeedUpdate = true;
+	object.geometry.normalsNeedUpdate = true;
+	object.geometry.computeFaceNormals();
+	object.geometry.computeVertexNormals();
+}
+
+function elasticMeshProperties(elasticity, friction, stretchRangeFactor, stretchFactor, maxStretchDist) {
+    return {
+        elasticity: elasticity,
+        friction: friction,
+        stretchRangeFactor: stretchRangeFactor,
+        maxStretchDist: maxStretchDist,
+        stretchFactor: stretchFactor
+    };
+}
+
+exports.elasticMeshProperties = elasticMeshProperties;
+
+exports.elasticMesh = function (geometry, material, materialProperties) {
+    var properties = elasticMeshProperties(
+        materialProperties.elasticity || 0,
+        materialProperties.friction || 0,
+        materialProperties.stretchRangeFactor || 0,
+        materialProperties.stretchFactor || 0,
+        materialProperties.maxStretchDist || 0
+    );
+	var mesh = new THREE.Mesh(geometry, material);
+	mesh.userData = {
+		meshProperties: properties,
+		originalVertices: [],
+		tensionForces: []
+	};
+	for (var i = 0; i < geometry.vertices.length; i++) {
+		mesh.userData.originalVertices.push( new THREE.Vector3().copy( geometry.vertices[i] ) );
+		mesh.userData.tensionForces.push( new THREE.Vector3() );
+	}
+	return mesh;
+};
+
+exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor) {
+	var localHit = obj.worldToLocal( new THREE.Vector3().copy( hitPoint ) );
+	for (var i = 0; i < obj.geometry.vertices.length; i++) {
+		var originalVert = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
+		var vertToPinchDist = localHit.distanceToSquared( originalVert ) * obj.userData.meshProperties.stretchRangeFactor;
+		var stretchFactor = 1 / (Math.pow(10, vertToPinchDist));
+		var rotatedDeltaMousePos = new THREE.Vector3(deltaMousePos.x, deltaMousePos.y, 0);
+		rotatedDeltaMousePos
+            .applyQuaternion( new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -obj.rotation.y) )
+            .negate();
+		obj.geometry.vertices[i].add(new THREE.Vector3()
+			.copy( rotatedDeltaMousePos )
+			.multiplyScalar( stretchFactor * obj.userData.meshProperties.stretchFactor * stretchDistanceFactor)
+        );
+	}
+	updateGeometry( obj );
+    return obj;
+};
+
+exports.normalize = function (obj) {
+	for (var i = 0; i < obj.geometry.vertices.length; i++) {
+		var originalPos = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
+		var currentPos = new THREE.Vector3().copy( obj.geometry.vertices[i] );
+		var deltaVect = currentPos.sub( originalPos );
+		var distToOrigin = deltaVect.length();
+		var elasticPotential = obj.userData.meshProperties.elasticity * distToOrigin * distToOrigin;
+		obj.userData.tensionForces[i]
+			.multiplyScalar( 1 - obj.userData.meshProperties.friction )
+			.add( deltaVect.normalize().multiplyScalar( -elasticPotential ) );
+		obj.geometry.vertices[i].add( obj.userData.tensionForces[i] );
+	}
+	updateGeometry( obj );
+    return obj;
+};
+},{"three":8}],5:[function(require,module,exports){
 module.exports = require('./vendor/dat.gui')
 module.exports.color = require('./vendor/dat.color')
-},{"./vendor/dat.color":3,"./vendor/dat.gui":4}],3:[function(require,module,exports){
+},{"./vendor/dat.color":6,"./vendor/dat.gui":7}],6:[function(require,module,exports){
 /**
  * dat-gui JavaScript Controller Library
  * http://code.google.com/p/dat-gui
@@ -774,7 +1077,7 @@ dat.color.math = (function () {
 })(),
 dat.color.toString,
 dat.utils.common);
-},{}],4:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 /**
  * dat-gui JavaScript Controller Library
  * http://code.google.com/p/dat-gui
@@ -4435,7 +4738,7 @@ dat.dom.CenteredDiv = (function (dom, common) {
 dat.utils.common),
 dat.dom.dom,
 dat.utils.common);
-},{}],5:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 var self = self || {};// File:src/Three.js
 
 /**
@@ -45005,327 +45308,4 @@ if (typeof exports !== 'undefined') {
   this['THREE'] = THREE;
 }
 
-},{}],6:[function(require,module,exports){
-var THREE = require('three');
-
-function updateGeometry ( object ) {
-	object.geometry.verticesNeedUpdate = true;
-	object.geometry.normalsNeedUpdate = true;
-	object.geometry.computeFaceNormals();
-	object.geometry.computeVertexNormals();
-}
-
-function elasticMeshProperties(elasticity, friction, stretchRangeFactor, stretchFactor, maxStretchDist) {
-    return {
-        elasticity: elasticity,
-        friction: friction,
-        stretchRangeFactor: stretchRangeFactor,
-        maxStretchDist: maxStretchDist,
-        stretchFactor: stretchFactor
-    };
-}
-
-exports.elasticMeshProperties = elasticMeshProperties;
-
-exports.elasticMesh = function (geometry, material, materialProperties) {
-    var properties = elasticMeshProperties(
-        materialProperties.elasticity || 0,
-        materialProperties.friction || 0,
-        materialProperties.stretchRangeFactor || 0,
-        materialProperties.stretchFactor || 0,
-        materialProperties.maxStretchDist || 0
-    );
-	var mesh = new THREE.Mesh(geometry, material);
-	mesh.userData = {
-		meshProperties: properties,
-		originalVertices: [],
-		tensionForces: []
-	};
-	for (var i = 0; i < geometry.vertices.length; i++) {
-		mesh.userData.originalVertices.push( new THREE.Vector3().copy( geometry.vertices[i] ) );
-		mesh.userData.tensionForces.push( new THREE.Vector3() );
-	}
-	return mesh;
-};
-
-exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor) {
-	var localHit = obj.worldToLocal( new THREE.Vector3().copy( hitPoint ) );
-	for (var i = 0; i < obj.geometry.vertices.length; i++) {
-		var originalVert = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
-		var vertToPinchDist = localHit.distanceToSquared( originalVert ) * obj.userData.meshProperties.stretchRangeFactor;
-		var stretchFactor = 1 / (Math.pow(10, vertToPinchDist));
-		var rotatedDeltaMousePos = new THREE.Vector3(deltaMousePos.x, deltaMousePos.y, 0);
-		rotatedDeltaMousePos
-            .applyQuaternion( new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -obj.rotation.y) )
-            .negate();
-		obj.geometry.vertices[i].add(new THREE.Vector3()
-			.copy( rotatedDeltaMousePos )
-			.multiplyScalar( stretchFactor * obj.userData.meshProperties.stretchFactor * stretchDistanceFactor)
-        );
-	}
-	updateGeometry( obj );
-    return obj;
-};
-
-exports.normalize = function (obj) {
-	for (var i = 0; i < obj.geometry.vertices.length; i++) {
-		var originalPos = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
-		var currentPos = new THREE.Vector3().copy( obj.geometry.vertices[i] );
-		var deltaVect = currentPos.sub( originalPos );
-		var distToOrigin = deltaVect.length();
-		var elasticPotential = obj.userData.meshProperties.elasticity * distToOrigin * distToOrigin;
-		obj.userData.tensionForces[i]
-			.multiplyScalar( 1 - obj.userData.meshProperties.friction )
-			.add( deltaVect.normalize().multiplyScalar( -elasticPotential ) );
-		obj.geometry.vertices[i].add( obj.userData.tensionForces[i] );
-	}
-	updateGeometry( obj );
-    return obj;
-};
-},{"three":5}],7:[function(require,module,exports){
-var THREE = require('three');
-var gui = require('dat-gui');
-var help = require('./helper');
-var geometryStretcher = require('./geometry-stretcher.js');
-var headShader = require('../shaders/head_shader');
-var headModel = require('../assets/models/head.json');
-// dom elements
-var renderTarget = document.getElementById('render-target');
-// global state
-var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, stretchDistFactor, headTexture;
-var scene = new THREE.Scene(),
-	renderer = new THREE.WebGLRenderer( { antialias: true, alpha: 1 } ),
-	headStartRotation = -Math.PI / 8, 
-	raycaster = new THREE.Raycaster(), 
-	lastPointerPos = new THREE.Vector2(),
-	headStates = {
-		rest: 0,
-		stretching: 1,
-		rotating: 2
-    },
-	currentHeadState = 0,
-	isTouching = false;
-// scene objects
-var head;
-// scene variables
-var sceneColor = new THREE.Color(0xdddddd),
-	ambientColor = sceneColor,
-	framesPerSecond = 60,
-	rotateSpeed = 0.01;
-
-window.onload =  function () {
-    var textureLoader = new THREE.TextureLoader();
-    textureLoader.load(
-        './assets/images/head.png',
-        function (texture) {
-            headTexture = texture;
-            start();
-        }
-    );
-}
-
-function start () {
-    console.log(gui);
-	renderTargetRect = renderTarget.getBoundingClientRect();
-	// init renderer
-	renderer.setSize(renderTarget.clientWidth, renderTarget.clientHeight);
-	renderTarget.appendChild( renderer.domElement );
-	renderer.setClearColor(sceneColor);
-	// init camera
-    camera = new THREE.PerspectiveCamera(45, renderTarget.clientWidth / renderTarget.clientHeight, 0.1, 100)
-	camera.position.set(0, 0, 6);
-	tanFOV = Math.tan( THREE.Math.degToRad( camera.fov / 2 ) );
-    var viewDirection = new THREE.Vector3(0, 0, -1.0).transformDirection(camera.matrixWorld);    
-	// HEAD
-    var geometry = new THREE.JSONLoader().parse(headModel).geometry;
-    var headMeshProperties = geometryStretcher.elasticMeshProperties(
-        0.5, // elasticity
-        0.25, // friction
-        2.0, // stretch range factor
-        0.003, // stretch factor
-        400.0 // max stretch distance
-    );
-    head = geometryStretcher.elasticMesh(
-        geometry,
-        new THREE.ShaderMaterial({
-            vertexShader: headShader.vertexShader,
-            fragmentShader: headShader.fragmentShader,
-            uniforms: {
-                texture: { type: "t", value: headTexture },
-                uViewDir: { type: 'v3', value: viewDirection },
-                uRimWidth: { type: 'f', value: 0.66 },
-                uRimIntensity: { type: 'f', value: 0.33 }
-            }
-        }),
-        headMeshProperties
-    );
-    head.name = 'Head';
-    head.castShadow = true;
-    head.rotation.y = headStartRotation;
-    scene.add( head );
-    // init events
-    window.addEventListener('resize', onResizeEvent, false);
-    onResizeEvent();
-    window.addEventListener('scroll', onScrollEvent, false);
-    // user input events
-    renderTarget.addEventListener('mousedown', onPointerStart, false);
-    renderTarget.addEventListener('touchstart', onPointerStart, false);
-    window.addEventListener('mousemove', onPointerMove, false);
-    window.addEventListener('touchmove', onPointerMove, false);
-    window.addEventListener('mouseup', onPointerEnd, false);
-    window.addEventListener('touchend', onPointerEnd, false);
-    renderTarget.addEventListener('contextmenu', function(event) { event.preventDefault(); }, false);;
-    // begin render vindaloop
-    update();
-}
-
-function update() {
-	// normalize head
-	if(currentHeadState !== headStates.stretching) {
-		geometryStretcher.normalize( head );
-	}
-    // render
-	renderer.render(scene, camera);
-	// loop
-	requestAnimationFrame(update);
-}
-
-function onPointerStart(event) {
-    var isTouchInput = (event.touches) ? true : false;
-    var pointerPos = GetMousePosition(event);
-	lastPointerPos = new THREE.Vector2().copy( pointerPos );
-    pointerStartPosition = new THREE.Vector2().copy( pointerPos );
-	raycaster.setFromCamera(normalizedPointerPosition(pointerPos), camera);
-	var hits = raycaster.intersectObjects(scene.children, false);
-	for (var i = 0; i < hits.length; i++) {
-		if(hits[i].object.name === 'Head') {
-			raycastHitInfo = hits[i];
-			isTouching = true;
-			if (event.which === 1 || isTouchInput) {
-				currentHeadState = headStates.stretching;
-			} else if (event.which === 3) {
-				currentHeadState = headStates.rotating;
-			}
-			break;
-		}
-	}
-}
-
-function onPointerMove(event) {
-    if (!isTouching) return;
-    event.preventDefault();
-	var pointerPos = GetMousePosition(event);
-	var pointerDelta = new THREE.Vector2().copy( lastPointerPos ).sub( pointerPos );
-    pointerDelta.y *= -1;
-	lastPointerPos.copy( pointerPos );
-	if(currentHeadState === headStates.stretching) {
-        var distToPointer = new THREE.Vector2()
-            .copy( pointerPos )
-            .sub( pointerStartPosition )
-            .length();
-        if (distToPointer < head.userData.meshProperties.maxStretchDist) {
-            stretchDistFactor = 1.0 - distToPointer / head.userData.meshProperties.maxStretchDist;
-    		geometryStretcher.stretch(head, raycastHitInfo.point, pointerDelta, stretchDistFactor);                
-        } else {
-            releasePinch();
-        }
-	} else if(currentHeadState === headStates.rotating) {
-		head.rotation.y -= pointerDelta.x * rotateSpeed;
-		if (head.rotation.y < headStartRotation - Math.PI) {
-			head.rotation.y += Math.PI * 2;
-		} else if(head.rotation.y > headStartRotation + Math.PI) {
-			head.rotation.y -= Math.PI * 2;
-		}
-	}
-}
-
-function onPointerEnd(event) {
-	if (!isTouching) return;
-    event.preventDefault();
-    releasePinch();
-    isTouching = false;
-}
-
-function releasePinch() {
-    currentHeadState = headStates.rest;
-}
-
-function GetMousePosition(event) {
-	if (event.touches) {
-		return new THREE.Vector2(
-            event.touches[0].clientX,
-            event.touches[0].clientY
-        );		
-	} else {
-        return new THREE.Vector2(
-            event.clientX,
-            event.clientY
-        );
-	}
-}
-
-function onResizeEvent() {
-    var rtWidth = renderTarget.clientWidth;
-	var rtHeight = renderTarget.clientHeight;
-	renderTargetRect = renderTarget.getBoundingClientRect();
-	camera.aspect = rtWidth / rtHeight;
-	renderer.setSize( rtWidth, rtHeight );
-	camera.updateProjectionMatrix();
-}
-
-function onScrollEvent() {
-	renderTargetRect = renderTarget.getBoundingClientRect();
-}
-
-function normalizedPointerPosition(pointerPosition) {
-	var posX = (pointerPosition.x - renderTargetRect.left);
-	var posY = (pointerPosition.y - renderTargetRect.top);
-	return new THREE.Vector2(
-		(posX / renderTarget.clientWidth) * 2 - 1,
-		-((posY / renderTarget.clientHeight) * 2 - 1)
-	);
-}
-},{"../assets/models/head.json":1,"../shaders/head_shader":9,"./geometry-stretcher.js":6,"./helper":8,"dat-gui":2,"three":5}],8:[function(require,module,exports){
-exports.clamp = function(value, min, max) {
-	if(value < min) {
-		return min;
-	} else if (value > max){
-		return max;
-	} else {
-		return value;
-	}
-};
-
-exports.lerp = function(value1, value2, t) {
-	return value1 + (value2 - value1) * t;
-};
-
-exports.smootherstep = function(value1, value2, alpha) {
-	var x = exports.clamp( (alpha - value1) / (value2 - value1), 0, 1 );
-	return x * x * x * (x * (x * 6 - 15) + 10);
-};
-},{}],9:[function(require,module,exports){
-exports.vertexShader = `
-	varying vec2 vUv;
-	varying vec3 vWorldSpaceNormal;
-	void main() {
-		vUv = uv;
-		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-		vWorldSpaceNormal = (modelMatrix * vec4(normal, 1.0)).xyz;
-	}
-`;
-
-exports.fragmentShader = `
-	uniform sampler2D texture;
-	uniform vec3 uViewDir;
-	uniform float uRimWidth;
-	uniform float uRimIntensity;
-	varying vec3 vWorldSpaceNormal;
-	varying vec2 vUv;
-	void main() {
-		vec3 worldSpaceNormal = normalize( vWorldSpaceNormal );
-		float rimLight = uRimIntensity * smoothstep(1.0 - uRimWidth, 1.0, 1.0 - max(dot(worldSpaceNormal, -uViewDir), 0.0));
-		gl_FragColor = texture2D(texture, vUv) + rimLight;
-	}
-`;
-},{}]},{},[7]);
+},{}]},{},[2]);

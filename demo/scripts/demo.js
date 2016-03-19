@@ -1,9 +1,8 @@
 var THREE = require('three');
 var gui = require('dat-gui');
-var help = require('./helper');
-var geometryStretcher = require('./geometry-stretcher.js');
+var geometryStretcher = require('../../modules/geometry-stretcher.js');
 var headShader = require('../shaders/head_shader');
-var headModel = require('../assets/models/head.json');
+var headModel = require('../models/head.json');
 // dom elements
 var renderTarget = document.getElementById('render-target');
 // global state
@@ -31,7 +30,7 @@ var sceneColor = new THREE.Color(0xdddddd),
 window.onload =  function () {
     var textureLoader = new THREE.TextureLoader();
     textureLoader.load(
-        './assets/images/head.png',
+        './demo/textures/head.png',
         function (texture) {
             headTexture = texture;
             start();
@@ -40,7 +39,6 @@ window.onload =  function () {
 }
 
 function start () {
-    console.log(gui);
 	renderTargetRect = renderTarget.getBoundingClientRect();
 	// init renderer
 	renderer.setSize(renderTarget.clientWidth, renderTarget.clientHeight);

@@ -4,7 +4,8 @@
   "author": "Liam Atticus Clarke",
   "license": "ISC",
   "scripts": {
-    "dev": "lite-server"
+    "serve": "lite-server",
+    "bundle": "browserify demo/scripts/demo.js -o demo/bundle.js"
   },
   "dependencies": {
     "dat-gui": "^0.5.0",
