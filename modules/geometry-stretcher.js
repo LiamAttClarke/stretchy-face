@@ -8,14 +8,13 @@ function updateGeometry ( object ) {
 }
 
 exports.elasticMesh = function (geometry, material, materialProperties) {
-	var mesh = new THREE.Mesh(geometry, material);
+	var mesh = new THREE.Mesh(geometry.clone(), material);
 	mesh.userData = {
 		materialProperties: materialProperties,
-		originalVertices: [],
+		originalGeometry: geometry,
 		tensionForces: []
 	};
 	for (var i = 0; i < geometry.vertices.length; i++) {
-		mesh.userData.originalVertices.push( new THREE.Vector3().copy( geometry.vertices[i] ) );
 		mesh.userData.tensionForces.push( new THREE.Vector3() );
 	}
 	return mesh;
@@ -26,7 +25,7 @@ exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistance) {
     var stretchStrength = obj.userData.materialProperties.stretchStrength || 0;
 	var localHit = obj.worldToLocal( new THREE.Vector3().copy( hitPoint ) );
 	for (var i = 0; i < obj.geometry.vertices.length; i++) {
-		var originalVert = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
+		var originalVert = new THREE.Vector3().copy( obj.userData.originalGeometry.vertices[i] );
 		var vertToPinchDist = localHit.distanceToSquared( originalVert ) * stretchRange;
 		var stretchFactor = 1 / (Math.pow(10, vertToPinchDist));
 		var rotatedDeltaMousePos = new THREE.Vector3(deltaMousePos.x, deltaMousePos.y, 0);
@@ -46,7 +45,7 @@ exports.normalize = function (obj) {
     var elasticity = obj.userData.materialProperties.elasticity || 0;
     var friction = obj.userData.materialProperties.friction || 0;
 	for (var i = 0; i < obj.geometry.vertices.length; i++) {
-		var originalPos = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
+		var originalPos = new THREE.Vector3().copy( obj.userData.originalGeometry.vertices[i] );
 		var currentPos = new THREE.Vector3().copy( obj.geometry.vertices[i] );
 		var deltaVect = currentPos.sub( originalPos );
 		var distToOrigin = deltaVect.length();
