@@ -65,7 +65,7 @@ var renderTarget = document.getElementById('render-target');
 var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, headTexture, viewDirection;
 var scene = new THREE.Scene(),
 	renderer = new THREE.WebGLRenderer( { antialias: true, alpha: 1 } ),
-	headStartRotation = -Math.PI / 8, 
+	startRotation = -Math.PI / 8, 
 	raycaster = new THREE.Raycaster(), 
 	lastPointerPos = new THREE.Vector2(),
 	elasticObjectState = {
@@ -73,8 +73,7 @@ var scene = new THREE.Scene(),
 		stretching: 1,
 		rotating: 2
     },
-	currentElasticObjectState = 0,
-	isTouching = false;
+	currentElasticObjectState = 0;
 // scene objects
 var elasticObject;
 // scene variables
@@ -198,36 +197,33 @@ function initElasticObject() { // refactor dis
         }),
         params
     );
-    elasticObject.name = 'Head';
-    elasticObject.rotation.y = headStartRotation;
+    elasticObject.rotation.y = startRotation;
     scene.add(elasticObject);
 }
 
 function onPointerStart(event) {
-    var isTouchInput = (event.touches) ? true : false;
-    var pointerPos = GetMousePosition(event);
+    var pointerPos = GetPointerPosition(event);
 	lastPointerPos = new THREE.Vector2().copy( pointerPos );
     pointerStartPosition = new THREE.Vector2().copy( pointerPos );
 	raycaster.setFromCamera(normalizedPointerPosition(pointerPos), camera);
 	var hits = raycaster.intersectObjects(scene.children, false);
-	for (var i = 0; i < hits.length; i++) {
-		if(hits[i].object.name === 'Head') {
-			raycastHitInfo = hits[i];
-			isTouching = true;
-			if (event.which === 1 || isTouchInput) {
-				currentElasticObjectState = elasticObjectState.stretching;
-			} else if (event.which === 3) {
-				currentElasticObjectState = elasticObjectState.rotating;
-			}
-			break;
-		}
-	}
+    if (hits.length === 0) {
+        currentElasticObjectState = elasticObjectState.rotating;
+    } else {
+        for (var i = 0; i < hits.length; i++) {
+            if(hits[i].object.userData.tag === 'stretchable') {
+                raycastHitInfo = hits[i];
+                currentElasticObjectState = elasticObjectState.stretching;
+                break;
+            }
+        }
+    }	
 }
 
 function onPointerMove(event) {
-    if (!isTouching) return;
+    if (currentElasticObjectState === elasticObjectState.rest) return;
     event.preventDefault();
-	var pointerPos = GetMousePosition(event);
+	var pointerPos = GetPointerPosition(event);
 	var pointerDelta = new THREE.Vector2().copy( lastPointerPos ).sub( pointerPos );
     pointerDelta.y *= -1;
 	lastPointerPos.copy( pointerPos );
@@ -244,26 +240,26 @@ function onPointerMove(event) {
         }
 	} else if(currentElasticObjectState === elasticObjectState.rotating) {
 		elasticObject.rotation.y -= pointerDelta.x * rotateSpeed;
-		if (elasticObject.rotation.y < headStartRotation - Math.PI) {
+		if (elasticObject.rotation.y < startRotation - Math.PI) {
 			elasticObject.rotation.y += Math.PI * 2;
-		} else if(elasticObject.rotation.y > headStartRotation + Math.PI) {
+		} else if(elasticObject.rotation.y > startRotation + Math.PI) {
 			elasticObject.rotation.y -= Math.PI * 2;
 		}
 	}
 }
 
-function onPointerEnd(event) {
-	if (!isTouching) return;
+function onPointerEnd(event) {    
+	if (currentElasticObjectState === elasticObjectState.rest) return;
     event.preventDefault();
     releasePinch();
-    isTouching = false;
+    currentElasticObjectState = elasticObjectState.rest;
 }
 
 function releasePinch() {
     currentElasticObjectState = elasticObjectState.rest;
 }
 
-function GetMousePosition(event) {
+function GetPointerPosition(event) {
 	if (event.touches) {
 		return new THREE.Vector2(
             event.touches[0].clientX,
@@ -331,6 +327,7 @@ function updateGeometry ( object ) {
 exports.elasticMesh = function (geometry, material, materialProperties) {
 	var mesh = new THREE.Mesh(geometry.clone(), material);
 	mesh.userData = {
+        tag: 'stretchable',
 		materialProperties: materialProperties,
 		originalGeometry: geometry,
 		tensionForces: []

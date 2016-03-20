@@ -10,6 +10,7 @@ function updateGeometry ( object ) {
 exports.elasticMesh = function (geometry, material, materialProperties) {
 	var mesh = new THREE.Mesh(geometry.clone(), material);
 	mesh.userData = {
+        tag: 'stretchable',
 		materialProperties: materialProperties,
 		originalGeometry: geometry,
 		tensionForces: []
