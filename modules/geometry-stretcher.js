@@ -7,29 +7,10 @@ function updateGeometry ( object ) {
 	object.geometry.computeVertexNormals();
 }
 
-function elasticMeshProperties(elasticity, friction, stretchRangeFactor, stretchFactor, maxStretchDist) {
-    return {
-        elasticity: elasticity,
-        friction: friction,
-        stretchRangeFactor: stretchRangeFactor,
-        maxStretchDist: maxStretchDist,
-        stretchFactor: stretchFactor
-    };
-}
-
-exports.elasticMeshProperties = elasticMeshProperties;
-
 exports.elasticMesh = function (geometry, material, materialProperties) {
-    var properties = elasticMeshProperties(
-        materialProperties.elasticity || 0,
-        materialProperties.friction || 0,
-        materialProperties.stretchRangeFactor || 0,
-        materialProperties.stretchFactor || 0,
-        materialProperties.maxStretchDist || 0
-    );
 	var mesh = new THREE.Mesh(geometry, material);
 	mesh.userData = {
-		meshProperties: properties,
+		materialProperties: materialProperties,
 		originalVertices: [],
 		tensionForces: []
 	};
@@ -40,11 +21,13 @@ exports.elasticMesh = function (geometry, material, materialProperties) {
 	return mesh;
 };
 
-exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor) {
+exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistance) {
+    var stretchRange = obj.userData.materialProperties.stretchRange || 0;
+    var stretchStrength = obj.userData.materialProperties.stretchStrength || 0;
 	var localHit = obj.worldToLocal( new THREE.Vector3().copy( hitPoint ) );
 	for (var i = 0; i < obj.geometry.vertices.length; i++) {
 		var originalVert = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
-		var vertToPinchDist = localHit.distanceToSquared( originalVert ) * obj.userData.meshProperties.stretchRangeFactor;
+		var vertToPinchDist = localHit.distanceToSquared( originalVert ) * stretchRange;
 		var stretchFactor = 1 / (Math.pow(10, vertToPinchDist));
 		var rotatedDeltaMousePos = new THREE.Vector3(deltaMousePos.x, deltaMousePos.y, 0);
 		rotatedDeltaMousePos
@@ -52,7 +35,7 @@ exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor)
             .negate();
 		obj.geometry.vertices[i].add(new THREE.Vector3()
 			.copy( rotatedDeltaMousePos )
-			.multiplyScalar( stretchFactor * obj.userData.meshProperties.stretchFactor * stretchDistanceFactor)
+			.multiplyScalar( stretchFactor * stretchStrength * stretchDistance)
         );
 	}
 	updateGeometry( obj );
@@ -60,14 +43,16 @@ exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor)
 };
 
 exports.normalize = function (obj) {
+    var elasticity = obj.userData.materialProperties.elasticity || 0;
+    var friction = obj.userData.materialProperties.friction || 0;
 	for (var i = 0; i < obj.geometry.vertices.length; i++) {
 		var originalPos = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
 		var currentPos = new THREE.Vector3().copy( obj.geometry.vertices[i] );
 		var deltaVect = currentPos.sub( originalPos );
 		var distToOrigin = deltaVect.length();
-		var elasticPotential = obj.userData.meshProperties.elasticity * distToOrigin * distToOrigin;
+		var elasticPotential = elasticity * distToOrigin * distToOrigin;
 		obj.userData.tensionForces[i]
-			.multiplyScalar( 1 - obj.userData.meshProperties.friction )
+			.multiplyScalar( 1 - friction )
 			.add( deltaVect.normalize().multiplyScalar( -elasticPotential ) );
 		obj.geometry.vertices[i].add( obj.userData.tensionForces[i] );
 	}

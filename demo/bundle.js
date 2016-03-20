@@ -17,14 +17,14 @@ module.exports={
 }
 },{}],2:[function(require,module,exports){
 var THREE = require('three');
-var gui = require('dat-gui');
+var DAT = require('dat-gui');
 var geometryStretcher = require('../../modules/geometry-stretcher.js');
 var headShader = require('../shaders/head_shader');
 var headModel = require('../models/head.json');
 // dom elements
 var renderTarget = document.getElementById('render-target');
 // global state
-var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, stretchDistFactor, headTexture;
+var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, headTexture;
 var scene = new THREE.Scene(),
 	renderer = new THREE.WebGLRenderer( { antialias: true, alpha: 1 } ),
 	headStartRotation = -Math.PI / 8, 
@@ -44,8 +44,32 @@ var sceneColor = new THREE.Color(0xdddddd),
 	ambientColor = sceneColor,
 	framesPerSecond = 60,
 	rotateSpeed = 0.01;
+// GUI
+var gui = new DAT.GUI();
+var defaultParams = {
+    elasticity: 0.5,
+    friction: 0.25,
+    stretchRange: 2,
+    stretchStrength: 0.003,
+    maxStretchDistance: 512
+};
+var params = {
+    model: 0,
+    elasticity: 0.5,
+    friction: 0.25,
+    stretchRange: 2,
+    stretchStrength: 0.003,
+    maxStretchDistance: 512,
+    reset: function () {
+        params.elasticity = defaultParams.elasticity;
+        params.friction = defaultParams.friction;
+    }
+};
 
-window.onload =  function () {
+
+// Initialize
+window.onload = function () {
+    // load textures
     var textureLoader = new THREE.TextureLoader();
     textureLoader.load(
         './demo/textures/head.png',
@@ -53,30 +77,27 @@ window.onload =  function () {
             headTexture = texture;
             start();
         }
-    );
+    );    
 }
 
 function start () {
-    console.log(gui);
-	renderTargetRect = renderTarget.getBoundingClientRect();
+    // Init GUI
+    gui.add(params, 'model').options({model1: 0, model2: 1, model3: 2}).name('Model');
+    gui.add(params, 'elasticity', 0, 1).name('Elasticity').listen();
+    gui.add(params, 'friction', 0.1, 1).name('Friction').listen();
+    gui.add(params, 'reset').name('Reset');
 	// init renderer
+    renderTargetRect = renderTarget.getBoundingClientRect();
 	renderer.setSize(renderTarget.clientWidth, renderTarget.clientHeight);
 	renderTarget.appendChild( renderer.domElement );
 	renderer.setClearColor(sceneColor);
-	// init camera
+	// Init Camera
     camera = new THREE.PerspectiveCamera(45, renderTarget.clientWidth / renderTarget.clientHeight, 0.1, 100)
 	camera.position.set(0, 0, 6);
 	tanFOV = Math.tan( THREE.Math.degToRad( camera.fov / 2 ) );
     var viewDirection = new THREE.Vector3(0, 0, -1.0).transformDirection(camera.matrixWorld);    
-	// HEAD
+	// Init Head
     var geometry = new THREE.JSONLoader().parse(headModel).geometry;
-    var headMeshProperties = geometryStretcher.elasticMeshProperties(
-        0.5, // elasticity
-        0.25, // friction
-        2.0, // stretch range factor
-        0.003, // stretch factor
-        400.0 // max stretch distance
-    );
     head = geometryStretcher.elasticMesh(
         geometry,
         new THREE.ShaderMaterial({
@@ -89,7 +110,7 @@ function start () {
                 uRimIntensity: { type: 'f', value: 0.33 }
             }
         }),
-        headMeshProperties
+        params
     );
     head.name = 'Head';
     head.castShadow = true;
@@ -98,7 +119,6 @@ function start () {
     // init events
     window.addEventListener('resize', onResizeEvent, false);
     onResizeEvent();
-    window.addEventListener('scroll', onScrollEvent, false);
     // user input events
     renderTarget.addEventListener('mousedown', onPointerStart, false);
     renderTarget.addEventListener('touchstart', onPointerStart, false);
@@ -155,9 +175,9 @@ function onPointerMove(event) {
             .copy( pointerPos )
             .sub( pointerStartPosition )
             .length();
-        if (distToPointer < head.userData.meshProperties.maxStretchDist) {
-            stretchDistFactor = 1.0 - distToPointer / head.userData.meshProperties.maxStretchDist;
-    		geometryStretcher.stretch(head, raycastHitInfo.point, pointerDelta, stretchDistFactor);                
+        if (distToPointer < params.maxStretchDistance) {
+            var stretchDistance = 1.0 - distToPointer / params.maxStretchDistance;
+    		geometryStretcher.stretch(head, raycastHitInfo.point, pointerDelta, stretchDistance);                
         } else {
             releasePinch();
         }
@@ -205,10 +225,6 @@ function onResizeEvent() {
 	camera.updateProjectionMatrix();
 }
 
-function onScrollEvent() {
-	renderTargetRect = renderTarget.getBoundingClientRect();
-}
-
 function normalizedPointerPosition(pointerPosition) {
 	var posX = (pointerPosition.x - renderTargetRect.left);
 	var posY = (pointerPosition.y - renderTargetRect.top);
@@ -251,29 +267,10 @@ function updateGeometry ( object ) {
 	object.geometry.computeVertexNormals();
 }
 
-function elasticMeshProperties(elasticity, friction, stretchRangeFactor, stretchFactor, maxStretchDist) {
-    return {
-        elasticity: elasticity,
-        friction: friction,
-        stretchRangeFactor: stretchRangeFactor,
-        maxStretchDist: maxStretchDist,
-        stretchFactor: stretchFactor
-    };
-}
-
-exports.elasticMeshProperties = elasticMeshProperties;
-
 exports.elasticMesh = function (geometry, material, materialProperties) {
-    var properties = elasticMeshProperties(
-        materialProperties.elasticity || 0,
-        materialProperties.friction || 0,
-        materialProperties.stretchRangeFactor || 0,
-        materialProperties.stretchFactor || 0,
-        materialProperties.maxStretchDist || 0
-    );
 	var mesh = new THREE.Mesh(geometry, material);
 	mesh.userData = {
-		meshProperties: properties,
+		materialProperties: materialProperties,
 		originalVertices: [],
 		tensionForces: []
 	};
@@ -284,11 +281,13 @@ exports.elasticMesh = function (geometry, material, materialProperties) {
 	return mesh;
 };
 
-exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor) {
+exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistance) {
+    var stretchRange = obj.userData.materialProperties.stretchRange || 0;
+    var stretchStrength = obj.userData.materialProperties.stretchStrength || 0;
 	var localHit = obj.worldToLocal( new THREE.Vector3().copy( hitPoint ) );
 	for (var i = 0; i < obj.geometry.vertices.length; i++) {
 		var originalVert = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
-		var vertToPinchDist = localHit.distanceToSquared( originalVert ) * obj.userData.meshProperties.stretchRangeFactor;
+		var vertToPinchDist = localHit.distanceToSquared( originalVert ) * stretchRange;
 		var stretchFactor = 1 / (Math.pow(10, vertToPinchDist));
 		var rotatedDeltaMousePos = new THREE.Vector3(deltaMousePos.x, deltaMousePos.y, 0);
 		rotatedDeltaMousePos
@@ -296,7 +295,7 @@ exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor)
             .negate();
 		obj.geometry.vertices[i].add(new THREE.Vector3()
 			.copy( rotatedDeltaMousePos )
-			.multiplyScalar( stretchFactor * obj.userData.meshProperties.stretchFactor * stretchDistanceFactor)
+			.multiplyScalar( stretchFactor * stretchStrength * stretchDistance)
         );
 	}
 	updateGeometry( obj );
@@ -304,14 +303,16 @@ exports.stretch = function (obj, hitPoint, deltaMousePos, stretchDistanceFactor)
 };
 
 exports.normalize = function (obj) {
+    var elasticity = obj.userData.materialProperties.elasticity || 0;
+    var friction = obj.userData.materialProperties.friction || 0;
 	for (var i = 0; i < obj.geometry.vertices.length; i++) {
 		var originalPos = new THREE.Vector3().copy( obj.userData.originalVertices[i] );
 		var currentPos = new THREE.Vector3().copy( obj.geometry.vertices[i] );
 		var deltaVect = currentPos.sub( originalPos );
 		var distToOrigin = deltaVect.length();
-		var elasticPotential = obj.userData.meshProperties.elasticity * distToOrigin * distToOrigin;
+		var elasticPotential = elasticity * distToOrigin * distToOrigin;
 		obj.userData.tensionForces[i]
-			.multiplyScalar( 1 - obj.userData.meshProperties.friction )
+			.multiplyScalar( 1 - friction )
 			.add( deltaVect.normalize().multiplyScalar( -elasticPotential ) );
 		obj.geometry.vertices[i].add( obj.userData.tensionForces[i] );
 	}
