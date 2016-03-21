@@ -53,8 +53,6 @@ module.exports={
 var THREE = require('three');
 var DAT = require('dat-gui');
 var geometryStretcher = require('../../modules/geometry-stretcher.js');
-// shaders
-var headShader = require('../shaders/head_shader');
 // models
 var liamModel = require('../models/head.json');
 var teapotModel = require('../models/utah-teapot.json');
@@ -62,7 +60,7 @@ var suzanneModel = require('../models/suzanne.json');
 // dom elements
 var renderTarget = document.getElementById('render-target');
 //
-var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, headTexture, viewDirection;
+var renderTargetRect, pointerStartPosition, tanFOV, raycastHitInfo, camera, headTexture, viewDirection, directionalLight;
 var scene = new THREE.Scene(),
 	renderer = new THREE.WebGLRenderer( { antialias: true, alpha: 1 } ),
 	startRotation = -Math.PI / 8, 
@@ -78,32 +76,34 @@ var scene = new THREE.Scene(),
 var elasticObject;
 // scene variables
 var sceneColor = new THREE.Color(0xdddddd),
-	ambientColor = sceneColor,
+	ambientColor = new THREE.Color(0x888888),
 	rotateSpeed = 0.01;
 var defaultParams = {
+    model: 'liam',
+    material: 'basic',
     elasticity: 0.5,
     friction: 0.25,
-    stretchRange: 2,
-    stretchStrength: 0.003,
-    maxStretchDistance: 512
 };
 var params = {
-    model: 'liam',
-    material: 0,
-    elasticity: 0.5,
-    friction: 0.25,
+    model: defaultParams.model,
+    material: defaultParams.material,
+    elasticity: defaultParams.elasticity,
+    friction: defaultParams.friction,
     stretchRange: 2,
     stretchStrength: 0.003,
-    maxStretchDistance: 768,
+    maxStretchDistance: 512,
     reset: function () {
+        params.model = defaultParams.model;
+        params.material = defaultParams.material;
         params.elasticity = defaultParams.elasticity;
         params.friction = defaultParams.friction;
-        params.model = 'liam';
         initElasticObject();
     }
 };
-
-var geometries;
+var textureURLs = [
+    './demo/textures/head.png'
+];
+var geometries, materials, textures;
 
 // Initialization
 function initializeResources() {
@@ -114,33 +114,41 @@ function initializeResources() {
         teapot: jsonLoader.parse(teapotModel).geometry,
         suzanne: jsonLoader.parse(suzanneModel).geometry
     };
-    // set default model
-    params.geometry = geometries.liam;
     // load textures
     var textureLoader = new THREE.TextureLoader();
     textureLoader.load(
         './demo/textures/head.png',
         function (texture) {
-            headTexture = texture;
+            headTexture = texture;                
             start();
         }
-    );    
+    );  
 }
 window.onload = initializeResources;
 
 function start () {
     // Init GUI
-    var modelOptions = {
+    var modelOptions = {                
         Liam: 'liam',
         Teapot: 'teapot',
         Suzanne: 'suzanne'
     };
+    var materialOptions = {
+        Basic: 'basic',
+        Lambert: 'lambert',
+        Phong: 'phong',
+        Normal: 'normal'
+    };
     var gui = new DAT.GUI();
-    gui.add(params, 'model').options(modelOptions).name('Model').onChange(function () {
+    gui.add(params, 'model').options(modelOptions).name('Model').listen().onChange(function () {
         initElasticObject();
     });
-    //gui.add(params, 'material').options(materialOptions).name('Material');
-    gui.add(params, 'elasticity', 0, 1).name('Elasticity').listen();
+    gui.add(params, 'material').options(materialOptions).name('Material').listen().onChange(function () {
+        elasticObject.material = materials[params.material];
+        elasticObject.material.map = (params.model === 'liam') ? headTexture : null;
+        elasticObject.material.needsUpdate = true;
+    });
+    gui.add(params, 'elasticity', 0.1, 1).name('Elasticity').listen();
     gui.add(params, 'friction', 0.1, 1).name('Friction').listen();
     gui.add(params, 'reset').name('Reset');
 	// init renderer
@@ -152,7 +160,20 @@ function start () {
     camera = new THREE.PerspectiveCamera(45, renderTarget.clientWidth / renderTarget.clientHeight, 0.1, 100)
 	camera.position.set(0, 0, 8);
 	tanFOV = Math.tan( THREE.Math.degToRad( camera.fov / 2 ) );
-    viewDirection = new THREE.Vector3(0, 0, -1.0).transformDirection(camera.matrixWorld);    
+    viewDirection = new THREE.Vector3(0, 0, -1.0).transformDirection(camera.matrixWorld); 
+    // init light
+    var ambientLight = new THREE.AmbientLight(ambientColor);
+    scene.add(ambientLight);
+    directionalLight = new THREE.DirectionalLight( 0xffffff, 0.8 );
+    directionalLight.position.set(-1, 1, 1);
+    scene.add( directionalLight );  
+    // materials
+    materials = {
+        basic: new THREE.MeshBasicMaterial(),
+        lambert: new THREE.MeshLambertMaterial(),
+        phong: new THREE.MeshPhongMaterial(),
+        normal: new THREE.MeshNormalMaterial()
+    };
 	// Init Elastic Object
     initElasticObject();
     // init events
@@ -181,22 +202,16 @@ function update() {
 	requestAnimationFrame(update);
 }
 
-function initElasticObject() { // refactor dis
+function initElasticObject() {
     if (elasticObject) scene.remove(elasticObject);
     elasticObject = geometryStretcher.elasticMesh(
         geometries[params.model],
-        new THREE.ShaderMaterial({
-            vertexShader: headShader.vertexShader,
-            fragmentShader: headShader.fragmentShader,
-            uniforms: {
-                texture: { type: "t", value: headTexture },
-                uViewDir: { type: 'v3', value: viewDirection },
-                uRimWidth: { type: 'f', value: 0.66 },
-                uRimIntensity: { type: 'f', value: 0.33 }
-            }
-        }),
+        materials[params.material],
         params
     );
+    console.log(params.model);
+    elasticObject.material.map = (params.model === 'liam') ? headTexture : null;
+    elasticObject.material.needsUpdate = true;
     elasticObject.rotation.y = startRotation;
     scene.add(elasticObject);
 }
@@ -211,7 +226,7 @@ function onPointerStart(event) {
         currentElasticObjectState = elasticObjectState.rotating;
     } else {
         for (var i = 0; i < hits.length; i++) {
-            if(hits[i].object.userData.tag === 'stretchable') {
+            if(hits[i].object.userData.tag === geometryStretcher.elasticMeshTag) {
                 raycastHitInfo = hits[i];
                 currentElasticObjectState = elasticObjectState.stretching;
                 break;
@@ -290,31 +305,7 @@ function normalizedPointerPosition(pointerPosition) {
 		-((posY / renderTarget.clientHeight) * 2 - 1)
 	);
 }
-},{"../../modules/geometry-stretcher.js":6,"../models/head.json":1,"../models/suzanne.json":2,"../models/utah-teapot.json":3,"../shaders/head_shader":5,"dat-gui":7,"three":10}],5:[function(require,module,exports){
-exports.vertexShader = `
-	varying vec2 vUv;
-	varying vec3 vWorldSpaceNormal;
-	void main() {
-		vUv = uv;
-		gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-		vWorldSpaceNormal = (modelMatrix * vec4(normal, 1.0)).xyz;
-	}
-`;
-
-exports.fragmentShader = `
-	uniform sampler2D texture;
-	uniform vec3 uViewDir;
-	uniform float uRimWidth;
-	uniform float uRimIntensity;
-	varying vec3 vWorldSpaceNormal;
-	varying vec2 vUv;
-	void main() {
-		vec3 worldSpaceNormal = normalize( vWorldSpaceNormal );
-		float rimLight = uRimIntensity * smoothstep(1.0 - uRimWidth, 1.0, 1.0 - max(dot(worldSpaceNormal, -uViewDir), 0.0));
-		gl_FragColor = texture2D(texture, vUv) + rimLight;
-	}
-`;
-},{}],6:[function(require,module,exports){
+},{"../../modules/geometry-stretcher.js":5,"../models/head.json":1,"../models/suzanne.json":2,"../models/utah-teapot.json":3,"dat-gui":6,"three":9}],5:[function(require,module,exports){
 var THREE = require('three');
 
 function updateGeometry ( object ) {
@@ -324,10 +315,12 @@ function updateGeometry ( object ) {
 	object.geometry.computeVertexNormals();
 }
 
+exports.elasticMeshTag = 'elastic';
+
 exports.elasticMesh = function (geometry, material, materialProperties) {
 	var mesh = new THREE.Mesh(geometry.clone(), material);
 	mesh.userData = {
-        tag: 'stretchable',
+        tag: exports.elasticMeshTag,
 		materialProperties: materialProperties,
 		originalGeometry: geometry,
 		tensionForces: []
@@ -376,10 +369,10 @@ exports.normalize = function (obj) {
 	updateGeometry( obj );
     return obj;
 };
-},{"three":10}],7:[function(require,module,exports){
+},{"three":9}],6:[function(require,module,exports){
 module.exports = require('./vendor/dat.gui')
 module.exports.color = require('./vendor/dat.color')
-},{"./vendor/dat.color":8,"./vendor/dat.gui":9}],8:[function(require,module,exports){
+},{"./vendor/dat.color":7,"./vendor/dat.gui":8}],7:[function(require,module,exports){
 /**
  * dat-gui JavaScript Controller Library
  * http://code.google.com/p/dat-gui
@@ -1135,7 +1128,7 @@ dat.color.math = (function () {
 })(),
 dat.color.toString,
 dat.utils.common);
-},{}],9:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 /**
  * dat-gui JavaScript Controller Library
  * http://code.google.com/p/dat-gui
@@ -4796,7 +4789,7 @@ dat.dom.CenteredDiv = (function (dom, common) {
 dat.utils.common),
 dat.dom.dom,
 dat.utils.common);
-},{}],10:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 var self = self || {};// File:src/Three.js
 
 /**

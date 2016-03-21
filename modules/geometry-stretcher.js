@@ -7,10 +7,12 @@ function updateGeometry ( object ) {
 	object.geometry.computeVertexNormals();
 }
 
+exports.elasticMeshTag = 'elastic';
+
 exports.elasticMesh = function (geometry, material, materialProperties) {
 	var mesh = new THREE.Mesh(geometry.clone(), material);
 	mesh.userData = {
-        tag: 'stretchable',
+        tag: exports.elasticMeshTag,
 		materialProperties: materialProperties,
 		originalGeometry: geometry,
 		tensionForces: []
