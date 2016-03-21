@@ -157,7 +157,7 @@ function start () {
 	renderTarget.appendChild( renderer.domElement );
 	renderer.setClearColor(sceneColor);
 	// Init Camera
-    camera = new THREE.PerspectiveCamera(45, renderTarget.clientWidth / renderTarget.clientHeight, 0.1, 100)
+    camera = new THREE.PerspectiveCamera(30, renderTarget.clientWidth / renderTarget.clientHeight, 0.1, 100)
 	camera.position.set(0, 0, 8);
 	tanFOV = Math.tan( THREE.Math.degToRad( camera.fov / 2 ) );
     viewDirection = new THREE.Vector3(0, 0, -1.0).transformDirection(camera.matrixWorld); 
@@ -209,7 +209,6 @@ function initElasticObject() {
         materials[params.material],
         params
     );
-    console.log(params.model);
     elasticObject.material.map = (params.model === 'liam') ? headTexture : null;
     elasticObject.material.needsUpdate = true;
     elasticObject.rotation.y = startRotation;
