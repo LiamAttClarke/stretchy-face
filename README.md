@@ -1,2 +1,2 @@
-# Geometry Stretcher
-Stretch 3D geometries as if they were rubber.
+# Stretchy Face
+What if my head was made of rubber?
