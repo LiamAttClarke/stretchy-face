@@ -1,14 +1,34 @@
 {
   "name": "stretchy-face",
   "version": "1.0.0",
-  "author": "Liam Atticus Clarke",
+  "description": "",
+  "main": "src/main.js",
   "scripts": {
-    "build": "browserify main.js -o bundle.js"
+    "build": "webpack",
+    "watch": "NODE_ENV=development webpack --watch",
+    "serve": "NODE_ENV=development webpack serve"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LiamAttClarke/stretchy-face.git"
+  },
+  "author": "",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/LiamAttClarke/stretchy-face/issues"
+  },
+  "homepage": "https://github.com/LiamAttClarke/stretchy-face#readme",
+  "devDependencies": {
+    "@types/three": "^0.130.0",
+    "copy-webpack-plugin": "^9.0.1",
+    "ts-loader": "^9.2.3",
+    "typescript": "^4.3.5",
+    "webpack": "^5.44.0",
+    "webpack-cli": "^4.7.2",
+    "webpack-dev-server": "^3.11.2"
   },
   "dependencies": {
-    "three": "^0.74.0"
-  },
-  "devDependencies": {
-    "browserify": "^12.0.1"
+    "three": "^0.130.1",
+    "tslib": "^2.3.0"
   }
 }

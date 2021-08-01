@@ -1,0 +1,23 @@
+{
+  "version": "2.0.2",
+  "compilerOptions": {
+      "target": "esnext",
+      "typeRoots": [
+        "node_modules/@types"
+      ],
+      "outDir": "dist",
+      "module": "es6",
+      "moduleResolution": "node",
+      "emitDecoratorMetadata": true,
+      "experimentalDecorators": true,
+      "allowSyntheticDefaultImports": true,
+      "declaration": false,
+      "sourceMap": true
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
