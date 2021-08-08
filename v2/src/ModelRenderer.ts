@@ -90,27 +90,24 @@ export default class ModelRenderer {
   }
 
   private async loadElasticMesh(modelPath: string, texturePath: string): Promise<ElasticMesh> {
+    return new ElasticMesh(new BoxBufferGeometry(1, 1, 1, 16, 16, 16), new MeshNormalMaterial(), this.elasticMeshOptions);
     // const texture = await new TextureLoader().loadAsync(texturePath);
     // texture.flipY = false;
     // const material = new MeshPhongMaterial({
     //   map: texture,
     //   side: DoubleSide
     // });
-    const gltf = await new GLTFLoader().loadAsync(modelPath);
-    let elasticMesh: ElasticMesh = null;
-    gltf.scene.traverse((obj) => {
-      if (obj.type === "Mesh") {
-        const originalMesh = obj as Mesh;
-        originalMesh.geometry.computeVertexNormals();
-        elasticMesh = new ElasticMesh(new BoxBufferGeometry(1, 1, 1, 16, 16, 16), new MeshNormalMaterial(), this.elasticMeshOptions);
-        // elasticMesh = new ElasticMesh(new SphereBufferGeometry(1, 128, 128), new MeshNormalMaterial(), this.elasticMeshOptions);
-        // elasticMesh = new ElasticMesh(new IcosahedronBufferGeometry(1, 3), new MeshNormalMaterial(), this.elasticMeshOptions);
-        // elasticMesh = new ElasticMesh(originalMesh.geometry, new MeshNormalMaterial({ side: DoubleSide }), this.elasticMeshOptions);
-        // elasticMesh = new ElasticMesh(originalMesh.geometry, material);
-      }
-    })
-    // mesh.material = material;
-    return elasticMesh;
+    // const gltf = await new GLTFLoader().loadAsync(modelPath);
+    // let elasticMesh: ElasticMesh = null;
+    // gltf.scene.traverse((obj) => {
+    //   if (obj.type === "Mesh") {
+    //     const originalMesh = obj as Mesh;
+    //     originalMesh.geometry.computeVertexNormals();
+    //     // elasticMesh = new ElasticMesh(originalMesh.geometry, new MeshNormalMaterial({ side: DoubleSide }), this.elasticMeshOptions);
+    //     // elasticMesh = new ElasticMesh(originalMesh.geometry, material);
+    //   }
+    // })
+    // return elasticMesh;
   }
 
   private async initScene() {
