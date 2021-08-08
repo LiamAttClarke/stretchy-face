@@ -5,27 +5,24 @@ import {
   Scene,
   WebGLRenderer,
   Mesh,
-  BoxBufferGeometry,
   Vector2,
   Raycaster,
   Intersection,
   MeshNormalMaterial,
   Vector3,
   SphereBufferGeometry,
-  IcosahedronBufferGeometry,
-  MeshPhongMaterial,
   TextureLoader,
-  MeshBasicMaterial,
-  Side,
   DoubleSide,
-  Quaternion,
-} from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import ElasticMesh from './ElasticMesh';
+  MeshPhongMaterial,
+  BoxBufferGeometry,
+} from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import * as dat from "dat.gui";
+import ElasticMesh, { ElasticMeshOptions } from "./ElasticMesh";
 
-const MODEL_PATH = '/assets/liam.glb';
-const TEXTURE_PATH = '/assets/liam_texture.png';
+const MODEL_PATH = "/assets/liam.glb";
+const TEXTURE_PATH = "/assets/liam_texture.png";
 const MAX_FPS = 60;
 
 export interface ModelRendererOptions {
@@ -44,10 +41,13 @@ export default class ModelRenderer {
   private orbitControls: OrbitControls;
   private elasticMesh: ElasticMesh|null = null;
   private lastUpdateTimeMS: number = 0;
-  private lastPointerPosition: Vector2 = new Vector2();
-  private pointerStartPosition: Vector2 = new Vector2();
   private raycaster = new Raycaster();
-  private raycastIntersection: Intersection|null = null;
+  private pointerIntersection: Intersection|null = null;
+  private elasticMeshOptions: Partial<ElasticMeshOptions> = {};
+  private meshControls = new dat.GUI({
+    name: "Control Panel"
+  });
+  private hitMarker = new Mesh(new SphereBufferGeometry(0.1, 4, 4), new MeshNormalMaterial());
 
   constructor(options: ModelRendererOptions) {
     this.options = { ...defaultOptions, ...options };
@@ -74,29 +74,38 @@ export default class ModelRenderer {
     this.orbitControls.maxDistance = 10;
     this.orbitControls.maxPolarAngle = Math.PI;
 
-    window.addEventListener('resize', this.onResizeEvent.bind(this));
+    window.addEventListener("resize", this.onResizeEvent.bind(this));
 
     this.initScene().then(() => {
+      // mesh controls
+      this.meshControls.add(this.elasticMesh.options, "particleMass", 0.1, 1, 0.001);
+      this.meshControls.add(this.elasticMesh.options, "stiffness", 0.01, 1, 0.01);
+      this.meshControls.add(this.elasticMesh.options, "originStiffness", 0, 0.15, 0.01);
+      this.meshControls.add(this.elasticMesh.options, "drag", 0, 1, 0.01);
+      this.meshControls.add(this.elasticMesh.options, "damping", 0, 0.5, 0.01);
+      this.meshControls.add(this.elasticMesh.options, "pinchRadius", 0.1, 1, 0.01);
       this.initInput();
       this.update(performance.now());
     });
   }
 
   private async loadElasticMesh(modelPath: string, texturePath: string): Promise<ElasticMesh> {
-    const texture = await new TextureLoader().loadAsync(texturePath);
-    texture.flipY = false;
-    const material = new MeshBasicMaterial({
-      map: texture,
-      side: DoubleSide
-    });
+    // const texture = await new TextureLoader().loadAsync(texturePath);
+    // texture.flipY = false;
+    // const material = new MeshPhongMaterial({
+    //   map: texture,
+    //   side: DoubleSide
+    // });
     const gltf = await new GLTFLoader().loadAsync(modelPath);
     let elasticMesh: ElasticMesh = null;
     gltf.scene.traverse((obj) => {
-      if (obj.type === 'Mesh') {
+      if (obj.type === "Mesh") {
         const originalMesh = obj as Mesh;
         originalMesh.geometry.computeVertexNormals();
-        elasticMesh = new ElasticMesh(new BoxBufferGeometry(1, 1, 1, 32, 32, 32), new MeshNormalMaterial());
-        // elasticMesh = new ElasticMesh(new SphereBufferGeometry(1, 32, 32), new MeshNormalMaterial());
+        elasticMesh = new ElasticMesh(new BoxBufferGeometry(1, 1, 1, 16, 16, 16), new MeshNormalMaterial(), this.elasticMeshOptions);
+        // elasticMesh = new ElasticMesh(new SphereBufferGeometry(1, 128, 128), new MeshNormalMaterial(), this.elasticMeshOptions);
+        // elasticMesh = new ElasticMesh(new IcosahedronBufferGeometry(1, 3), new MeshNormalMaterial(), this.elasticMeshOptions);
+        // elasticMesh = new ElasticMesh(originalMesh.geometry, new MeshNormalMaterial({ side: DoubleSide }), this.elasticMeshOptions);
         // elasticMesh = new ElasticMesh(originalMesh.geometry, material);
       }
     })
@@ -106,19 +115,21 @@ export default class ModelRenderer {
 
   private async initScene() {
     // light
-    const ambientLight = new AmbientLight(0xffffff);
-    const directionalLight = new DirectionalLight(0xffffff, 0.1);
+    const ambientLight = new AmbientLight(0xffffff, 0.8);
+    const directionalLight = new DirectionalLight(0xffffff, 0.9);
     this.scene.add(ambientLight, directionalLight);
     // mesh
     this.elasticMesh = await this.loadElasticMesh(MODEL_PATH, TEXTURE_PATH);
     this.scene.add(this.elasticMesh);
+
+    // this.scene.add(this.hitMarker);
   }
 
   private initInput() {
-    this.renderer.domElement.addEventListener('pointerdown', this.onPointerDown.bind(this));
-    this.renderer.domElement.addEventListener('pointermove', this.onPointerMove.bind(this));
-    this.renderer.domElement.addEventListener('pointerup', this.onPointerEnd.bind(this));
-    this.renderer.domElement.addEventListener('cancel', this.onPointerEnd.bind(this));
+    this.renderer.domElement.addEventListener("pointerdown", this.onPointerDown.bind(this));
+    this.renderer.domElement.addEventListener("pointermove", this.onPointerMove.bind(this));
+    this.renderer.domElement.addEventListener("pointerup", this.onPointerEnd.bind(this));
+    this.renderer.domElement.addEventListener("cancel", this.onPointerEnd.bind(this));
   }
 
   private update(updateTimeMS: number) {
@@ -126,7 +137,7 @@ export default class ModelRenderer {
     // Do stuff
     this.elasticMesh.update(deltaTimeS);
     // update camera orbit
-    this.orbitControls.update()
+    this.orbitControls.update();
     // render
     this.renderer.render(this.scene, this.camera);
     // loop
@@ -137,35 +148,36 @@ export default class ModelRenderer {
   }
 
   onPointerDown(event: PointerEvent) {
-    const pointerPos = new Vector2(event.clientX, event.clientY);
-    this.lastPointerPosition = this.normalizedPointerPosition(new Vector2().copy(pointerPos));
-    this.pointerStartPosition = new Vector2().copy(pointerPos);
-    this.raycaster.setFromCamera(this.normalizedPointerPosition(pointerPos), this.camera);
-    const intersections = this.raycaster.intersectObjects(this.scene.children, false);
-    this.raycastIntersection = intersections.find((i) => i.object.userData.elasticMesh);
-    if (this.raycastIntersection) {
-      console.log('HIT:', this.raycastIntersection);
+    const pointerScreenPosition = this.pointerToScreen(new Vector2(event.clientX, event.clientY));
+    this.raycaster.setFromCamera(pointerScreenPosition, this.camera);
+    this.pointerIntersection = this.raycaster
+      .intersectObjects(this.scene.children, false)
+      .find((i) => i.object.userData.elasticMesh);
+    if (this.pointerIntersection) {
       (event.target as HTMLElement).setPointerCapture(event.pointerId);
     }
   }
 
   onPointerMove(event: PointerEvent) {
-    if (!this.raycastIntersection) return;
+    if (!this.pointerIntersection) return;
     event.preventDefault();
     event.stopPropagation();
-    const pointerPosition = this.normalizedPointerPosition(new Vector2(event.clientX, event.clientY));
-    const pointerDelta = new Vector2().copy(this.lastPointerPosition).sub(pointerPosition);
-    pointerDelta.y *= -1;
-    const elasticMesh = this.raycastIntersection.object as ElasticMesh;
-    const offset = this.raycastIntersection.point
-      .add(new Vector3(-pointerDelta.x, pointerDelta.y, 0))
-      .applyQuaternion(new Quaternion().setFromEuler(this.camera.rotation))
-    elasticMesh.stretch(this.raycastIntersection.point, offset);
+    const elasticMesh = this.pointerIntersection.object as ElasticMesh;
+    const pointerPosition = this.pointerToScreen(new Vector2(event.clientX, event.clientY));
+    const pointerWorldPosition = this.screenToWorld(pointerPosition);
+    const pointerDir = new Vector3().subVectors(pointerWorldPosition, this.camera.position).normalize();
+    pointerWorldPosition.add(
+      pointerDir.multiplyScalar(this.pointerIntersection.distance)
+    );
+    elasticMesh.stretch(
+      this.pointerIntersection,
+      pointerWorldPosition,
+    );
   }
 
   onPointerEnd(event: PointerEvent) {
-    if (!this.raycastIntersection) return;
-    this.raycastIntersection = null;
+    if (!this.pointerIntersection) return;
+    this.pointerIntersection = null;
     (event.target as HTMLElement).releasePointerCapture(event.pointerId);
     event.preventDefault();
     this.elasticMesh.resetStretch();
@@ -180,12 +192,16 @@ export default class ModelRenderer {
     this.camera.updateProjectionMatrix();
   }
 
-  normalizedPointerPosition(pointerPosition: Vector2) {
+  pointerToScreen(pointerPosition: Vector2) {
     const renderTargetRect = this.options.renderTarget.getBoundingClientRect();
     return new Vector2(
       ((pointerPosition.x - renderTargetRect.left) / this.options.renderTarget.clientWidth) * 2 - 1,
       -(((pointerPosition.y - renderTargetRect.top) / this.options.renderTarget.clientHeight) * 2 - 1)
     );
+  }
+
+  screenToWorld(screenPosition: Vector2): Vector3 {
+    return new Vector3(screenPosition.x, screenPosition.y, -1).unproject(this.camera);
   }
 
 }

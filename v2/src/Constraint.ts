@@ -6,7 +6,8 @@ export default class Constraint {
   p1: Particle;
   restLength: number;
   stiffness: number;
-  originStiffness = 0.01;
+  originStiffness: number;
+  maxLength: number;
 
   get length() {
     return this.p0.position.distanceTo(this.p1.position);
@@ -16,14 +17,21 @@ export default class Constraint {
     return new Vector3().subVectors(this.p1.position, this.p0.position).normalize();
   }
 
-  constructor(p0: Particle, p1: Particle, stiffness = 1.0) {
+  constructor(
+    p0: Particle,
+    p1: Particle,
+    stiffness = 1.0,
+    originStiffness = 1.0,
+  ) {
     this.p0 = p0;
     this.p1 = p1;
     this.stiffness = stiffness;
-    this.restLength = p0.position.distanceTo(p1.position);
+    this.originStiffness = originStiffness;
+    this.restLength = p0.position.distanceTo(p1.position) * 1;
   }
 
   update() {
+    // Apply constraint forces
     const constraintForce = this.computeConstraintForce()
       // Halving force to split between constraint points
       .multiplyScalar(0.5);
@@ -34,6 +42,7 @@ export default class Constraint {
     this.p1.addForce(this.computeOriginForce(this.p1));
   }
 
+  // Replace with additional/separate constraints
   private computeOriginForce(particle: Particle): Vector3 {
     // Hooke's Law: f = kx
     const toOrigin = particle.toOrigin;
