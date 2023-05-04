@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "author": "Liam Atticus Clarke",
   "scripts": {
-    "build": "browserify main.js -o bundle.js"
+    "build": "browserify main.js -o bundle.js",
+    "serve": "npm run build && serve ./"
   },
   "dependencies": {
     "three": "^0.74.0"
   },
   "devDependencies": {
-    "browserify": "^12.0.1"
+    "browserify": "^12.0.1",
+    "serve": "^14.2.0"
   }
 }

@@ -13,7 +13,6 @@ export default class Particle {
   isFixed = false;
   meta: Record<any, any> = {};
 
-  private invMass: number;
   private tempDragVector = new Vector3();
 
   // reused vector instances
@@ -66,7 +65,7 @@ export default class Particle {
       )
   }
 
-  updatePosition(deltaSeconds: number): this {
+  updatePosition(deltaMS: number): this {
     if (this.isFixed) return;
     // verlet integration
     const velocity = this.computeVelocity();
@@ -75,7 +74,7 @@ export default class Particle {
       .multiplyScalar(1 - this.dampingFactor)
       .add(drag)
       .add(this.position)
-      .add(this.acceleration.multiplyScalar(deltaSeconds));
+      .add(this.acceleration.multiplyScalar(deltaMS / 1000));
     this.prevPosition.copy(this.position);
     this.position = newPosition;
     this.acceleration.set(0, 0, 0);

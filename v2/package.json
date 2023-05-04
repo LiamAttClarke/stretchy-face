@@ -5,8 +5,8 @@
   "main": "src/main.js",
   "scripts": {
     "build": "webpack",
-    "watch": "NODE_ENV=development webpack --watch",
-    "serve": "NODE_ENV=development webpack serve"
+    "watch": "cross-env NODE_ENV=development webpack --watch",
+    "serve": "cross-env NODE_ENV=development webpack serve"
   },
   "repository": {
     "type": "git",
@@ -29,6 +29,7 @@
     "webpack-dev-server": "^3.11.2"
   },
   "dependencies": {
+    "cross-env": "^7.0.3",
     "dat.gui": "^0.7.7",
     "three": "^0.130.1",
     "tslib": "^2.3.0"
