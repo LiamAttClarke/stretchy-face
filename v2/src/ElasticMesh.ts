@@ -100,7 +100,6 @@ export default class ElasticMesh extends Mesh {
     if (this._constraintsDirty) {
       this._constraints.forEach((c) => {
         c.stiffness = this._options.stiffness;
-        c.originStiffness = this._options.originStiffness;
         c.update()
       });
     }
@@ -147,29 +146,31 @@ export default class ElasticMesh extends Mesh {
     }
     this._particles = Object.values(vertexGroupMap);
     for (let i = 0; i < this.geometry.index.array.length; i += 3) {
-      const v0 = vertices[this.geometry.index.array[i]];
-      const v1 = vertices[this.geometry.index.array[i + 1]];
-      const v2 = vertices[this.geometry.index.array[i + 2]];
-      this._constraints.push(
-        new Constraint(
-          vertexGroupMap[this.getVertexKey(v0)],
-          vertexGroupMap[this.getVertexKey(v1)],
-          this._options.stiffness,
-          this._options.originStiffness,
-        ),
-        new Constraint(
-          vertexGroupMap[this.getVertexKey(v1)],
-          vertexGroupMap[this.getVertexKey(v2)],
-          this._options.stiffness,
-          this._options.originStiffness,
-        ),
-        new Constraint(
-          vertexGroupMap[this.getVertexKey(v2)],
-          vertexGroupMap[this.getVertexKey(v0)],
-          this._options.stiffness,
-          this._options.originStiffness,
+      const tri = [
+        vertices[this.geometry.index.array[i]],
+        vertices[this.geometry.index.array[i + 1]],
+        vertices[this.geometry.index.array[i + 2]],
+      ];
+      for (let i = 0; i < tri.length; i++) {
+        const vert = tri[i];
+        const vertParticle = vertexGroupMap[this.getVertexKey(vert)];
+        const vertOriginParticle = new Particle(vert, 1, 1, 1);
+        vertOriginParticle.isFixed = true;
+        this._constraints.push(
+          // Add constraint between each triangle vertex
+          new Constraint(
+            vertParticle,
+            vertexGroupMap[this.getVertexKey(tri[i < 2 ? i + 1 : 0])],
+            this._options.stiffness,
+          ),
+          // Add constraint between each vertex and it's origin
+          new Constraint(
+            vertParticle,
+            vertOriginParticle,
+            this._options.originStiffness,
+          )
         )
-      );
+      }
     }
   }
 
