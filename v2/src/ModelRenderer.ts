@@ -118,12 +118,12 @@ export default class ModelRenderer {
   }
 
   private async loadElasticMesh(modelPath: string): Promise<ElasticMesh> {
-    const cubeSlices = 16;
-    return new ElasticMesh(
-      new BoxBufferGeometry(1, 1, 1, cubeSlices, cubeSlices, cubeSlices),
-      new MeshNormalMaterial(),
-      DEFAULT_ELASTICMESH_OPTIONS
-    );
+    // const cubeSlices = 32;
+    // return new ElasticMesh(
+    //   new BoxBufferGeometry(1, 1, 1, cubeSlices, cubeSlices, cubeSlices),
+    //   new MeshNormalMaterial(),
+    //   DEFAULT_ELASTICMESH_OPTIONS
+    // );
     const gltf = await new GLTFLoader().loadAsync(modelPath);
     let elasticMesh: ElasticMesh = null;
     gltf.scene.traverse((obj) => {
